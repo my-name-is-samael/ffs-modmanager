@@ -329,7 +329,7 @@ end
 ---@param M ModManager
 ---@param Parameters string[]
 ---@param Ar any
-local function Reload(M, Parameters, Ar)
+local function ReloadCommand(M, Parameters, Ar)
     local usageStr = "Usage : reload <all|mod_name>"
 
     ---@param Mod ModCache
@@ -386,7 +386,7 @@ local function InitData()
         Version = VERSION,
     }
 
-    ModManager.AddHook(ModManager, "OnGameStateConstruct",
+    ModManager.AddHook(ModManager, "OnClientRestart",
         "/Script/Engine.PlayerController:ClientRestart",
         function()
             ModManager.GameState = FindFirstOf("BP_BakeryGameState_Ingame_C")
@@ -412,7 +412,7 @@ local function InitData()
         end
     end
 
-    ModManager.AddCommand(ModManager, "reload", Reload)
+    ModManager.AddCommand(ModManager, "reload", ReloadCommand)
 end
 
 local function Init()

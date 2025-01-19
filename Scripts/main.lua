@@ -4,6 +4,11 @@ Utils = require("utils")
 
 require("types")
 
+local AbsPath = debug.getinfo(1, "S").source
+    :match("@(.*[/\\])")
+    :gsub("scripts\\$", "")
+local RelPath = AbsPath:gsub("^.*(\\Win64\\Mods\\)", "Mods\\")
+
 local VERSION = 1
 
 ---@type ModManager
@@ -21,6 +26,8 @@ local ModManager = {
     AddCommand = function() end,
     AddKey = function() end,
     Trigger = function() end,
+    AddSound = function() return -1 end,
+    PlaySound = function() end,
 }
 
 -- Will log your message with the format : [<Type>] [<Tag>] <message>
@@ -41,16 +48,15 @@ end
 ---@type table<string, ModCache>
 local Mods = {}
 
-local function TryLoadMod(Name, MainPath)
+local function TryLoadMod(Name)
     Mods[Name] = {
+        ID = Name,
         Loaded = false,
         LastLoadedTime = -1,
     }
-    local status, submod = pcall(require, MainPath)
+    local status, submod = pcall(require, string.format("%sMods\\%s\\main", RelPath, Name))
     if status and type(submod) == "table" then
-        if submod.ID then
-            table.assign(submod, { ID = Name })
-        end
+        submod.ID = Name
         if not submod.Version then
             Log(ModManager, LOG.WARN, string.format("Submod '%s' has no version", Name))
         elseif submod.Version < VERSION then
@@ -75,20 +81,22 @@ local function TryLoadMod(Name, MainPath)
 end
 
 local function LoadMods()
-    local absModDir = tostring(package.cpath):split(";")[1]:gsub("?.dll", "")
-    local modDir = ""
-    if ModManager.UE4SSBeta then
-        absModDir = absModDir .. "ue4ss\\"
-        modDir = "ue4ss\\"
-    end
-    absModDir = absModDir .. "Mods\\ModManager\\Mods\\"
-    modDir = modDir .. "Mods\\ModManager\\Mods\\"
-    for dir in io.popen("dir \"" .. absModDir .. "\" /b"):lines() do
-        local path = absModDir .. dir
+    local ModsDir = AbsPath .. "Mods\\"
+    for dir in io.popen("dir \"" .. ModsDir .. "\" /b"):lines() do
+        local path = ModsDir .. dir
         if Utils.isDir(path) and Utils.fileExists(path .. "\\main.lua") then
-            local subModPath = modDir .. dir .. "\\main"
-            TryLoadMod(dir, subModPath)
+            TryLoadMod(dir)
         end
+    end
+end
+
+function ModManager.Loop(Mod, Timeout, Callback)
+    local CachedMod = table.find(Mods, function(Cached) return Cached.ID == Mod.ID end)
+    if CachedMod then
+        LoopAsync(Timeout, function()
+            -- maybe bench loop process to warn for heavy duty tasks
+            return Callback(ModManager)
+        end)
     end
 end
 
@@ -116,18 +124,8 @@ local function ToggleHooks()
     end)
 end
 
-function ModManager.Loop(Mod, Timeout, Callback)
-    local CachedMod = table.find(Mods, function(Mod2) return Mod2.ID == Mod.ID end)
-    if CachedMod then
-        LoopAsync(Timeout, function()
-            -- maybe bench loop process to warn for heavy duty tasks
-            return Callback(ModManager)
-        end)
-    end
-end
-
 function ModManager.AddHook(Mod, Name, Key, Callback, Condition)
-    local CachedMod = table.find(Mods, function(Mod2) return Mod2.ID == Mod.ID end)
+    local CachedMod = table.find(Mods, function(Cached) return Cached.ID == Mod.ID end)
     if CachedMod then
         if not CachedMod.Hooks then
             CachedMod.Hooks = {}
@@ -147,15 +145,15 @@ function ModManager.AddHook(Mod, Name, Key, Callback, Condition)
 end
 
 function ModManager.AddCommand(Mod, CommandName, Callback)
-    local CachedMod = table.find(Mods, function(Mod2) return Mod2.ID == Mod.ID end)
+    local CachedMod = table.find(Mods, function(Cached) return Cached.ID == Mod.ID end)
     if CachedMod then
         if not CachedMod.Commands then
             CachedMod.Commands = {}
         end
         if CachedMod.Commands[CommandName] then
-            Log(ModManager, LOG.ERR, string.format("Command %s already exists", CommandName))
+            Log(Mod, LOG.ERR, string.format("Command %s already exists", CommandName))
         else
-            local status, err = RegisterConsoleCommandHandler(CommandName, function(FullCommand, Parameters, Ar)
+            local status, err = pcall(RegisterConsoleCommandHandler, CommandName, function(FullCommand, Parameters, Ar)
                 local result = Callback(ModManager, Parameters, Ar)
                 if result == nil then
                     return true
@@ -168,52 +166,98 @@ function ModManager.AddCommand(Mod, CommandName, Callback)
                     Enabled = true,
                     CallBackFn = Callback
                 }
-                Log(ModManager, LOG.INFO, string.format("Command %s registered", CommandName))
+                Log(Mod, LOG.INFO, string.format("Command %s registered", CommandName))
             else
                 CachedMod.Commands[CommandName] = {
                     Command = CommandName,
                     Enabled = false,
                     Error = err
                 }
-                Log(ModManager, LOG.ERR, string.format("Failed to register command %s : %s", CommandName, err))
+                Log(Mod, LOG.ERR, string.format("Failed to register command %s : %s", CommandName, err))
             end
         end
     end
 end
 
+local function GenerateKeyID(Key, Modifiers)
+    local KeyID = tostring(Key)
+    if Modifiers then
+        local Modifiers2 = table.clone(Modifiers)
+        table.sort(Modifiers2)
+        for _, Modifier in pairs(Modifiers2) do
+            KeyID = KeyID .. "-" .. tostring(Modifier)
+        end
+    end
+    return KeyID
+end
+
+local function GenerateKeylabel(KeyValue, Modifiers)
+    local KeyLabel = string.capitalize(table.reduce(Key, function(Value, V, K)
+        return V == KeyValue and K or Value
+    end, ""))
+    local ModifiersLabel = ""
+    if Modifiers then
+        local Modifiers2 = table.clone(Modifiers)
+        table.sort(Modifiers2, function(a, b)
+            -- SHIFT is wrongly sorted by default, it should be last
+            if a == ModifierKey.SHIFT then
+                return false
+            elseif b == ModifierKey.SHIFT then
+                return true
+            else
+                return a < b
+            end
+        end)
+        ModifiersLabel = table.join(
+            table.map(Modifiers2, function(M1)
+                return string.capitalize(table.reduce(ModifierKey, function(Value, V, K)
+                    return V == M1 and K or Value
+                end, "")) .. " + "
+            end))
+    end
+    return ModifiersLabel .. KeyLabel
+end
+
 function ModManager.AddKey(Mod, Key, Description, Callback, Modifiers)
-    local CachedMod = table.find(Mods, function(Mod2) return Mod2.ID == Mod.ID end)
+    local CachedMod = table.find(Mods, function(Cached) return Cached.ID == Mod.ID end)
     if CachedMod then
         if not CachedMod.Keys then
             CachedMod.Keys = {}
         end
-        if CachedMod.Keys[Key] then
-            Log(Mod, LOG.WARN, string.format("Key %s already exists", Key))
+        local KeyID = GenerateKeyID(Key, Modifiers)
+        local KeyLabel = GenerateKeylabel(Key, Modifiers)
+        if CachedMod.Keys[KeyID] then
+            Log(Mod, LOG.WARN, string.format("Key \"%s\" (%s) already exists", Description, KeyLabel))
         else
             local status, err
+            local FinalCallBackFn = function()
+                Callback(ModManager)
+            end
             if type(Modifiers) == "table" then
-                status, err = pcall(RegisterKeyBind, Key, Modifiers, Callback)
+                status, err = pcall(RegisterKeyBind, Key, Modifiers, FinalCallBackFn)
             else
-                status, err = pcall(RegisterKeyBind, Key, Callback)
+                status, err = pcall(RegisterKeyBind, Key, FinalCallBackFn)
             end
             if not status then
-                CachedMod.Keys[Key] = {
+                CachedMod.Keys[KeyID] = {
                     Key = Key,
+                    KeyLabel = KeyLabel,
                     Description = Description,
                     Enabled = false,
                     LoadError = err,
                     Modifiers = Modifiers,
                 }
-                Log(Mod, LOG.ERR, string.format("Failed to register key %s : %s", Key, err))
+                Log(Mod, LOG.ERR, string.format("Failed to register key \"%s\" (%s) : %s", Description, KeyLabel, err))
             else
-                CachedMod.Keys[Key] = {
+                CachedMod.Keys[KeyID] = {
                     Key = Key,
+                    KeyLabel = KeyLabel,
                     Description = Description,
                     Enabled = true,
-                    CallbackFn = Callback,
+                    CallbackFn = FinalCallBackFn,
                     Modifiers = Modifiers,
                 }
-                Log(Mod, LOG.INFO, string.format("Key %s registered", Key))
+                Log(Mod, LOG.INFO, string.format("Key \"%s\" (%s) registered", Description, KeyLabel))
             end
         end
     end
@@ -221,10 +265,52 @@ end
 
 function ModManager.Trigger(Mod, EventName, ...)
     Log(Mod, LOG.DEBUG, string.format("Triggering event %s", EventName))
-    for k, CachedMod in pairs(Mods) do
+    for _, CachedMod in pairs(Mods) do
         if type(CachedMod[EventName]) == "function" then
             Log(CachedMod, LOG.DEBUG, string.format("Catching event %s", EventName))
-            CachedMod[EventName](Mod, ...)
+            CachedMod[EventName](ModManager, ...)
+        end
+    end
+end
+
+function ModManager.AddSound(Mod, SoundPath)
+    if not SoundPath:find(".wav$") then
+        Log(Mod, LOG.ERR, string.format("%s must be a WAV file", SoundPath))
+        return -1
+    end
+
+    local CachedMod = table.find(Mods, function(Cached) return Cached.ID == Mod.ID end)
+    if not CachedMod then
+        return -1
+    end
+    local AbsSoundPath = string.format("%sMods\\%s\\%s", AbsPath, Mod.ID, SoundPath)
+    if not Utils.fileExists(AbsSoundPath) or Utils.isDir(AbsSoundPath) then
+        Log(Mod, LOG.ERR, string.format("Invalid sound path %s", SoundPath))
+        return -1
+    end
+
+    if not CachedMod.Sounds then
+        CachedMod.Sounds = {}
+    end
+
+    if table.find(CachedMod.Sounds, function(V)
+            return V == AbsSoundPath
+        end) then
+        Log(Mod, LOG.WARN, string.format("Sound %s already exists", SoundPath))
+    else
+        table.insert(CachedMod.Sounds, AbsSoundPath)
+        Log(Mod, LOG.INFO, string.format("Sound %s registered", SoundPath))
+    end
+
+    return table.reduce(CachedMod.Sounds, function(Value, V, K) return V == AbsSoundPath and K or Value end, -1)
+end
+
+function ModManager.PlaySound(Mod, SoundID)
+    local CachedMod = table.find(Mods, function(Cached) return Cached.ID == Mod.ID end)
+    if CachedMod and SoundID > -1 then
+        if CachedMod.Sounds and CachedMod.Sounds[SoundID] then
+            -- play sound async
+            io.popen(string.format("powershell -c (New-Object Media.SoundPlayer '%s').PlaySync();", CachedMod.Sounds[SoundID]))
         end
     end
 end

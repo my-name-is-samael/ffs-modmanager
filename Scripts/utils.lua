@@ -46,13 +46,21 @@ string.split = string.split or function(str, sep)
     return t
 end
 
+---@param str string
+---@return string
+string.capitalize = string.capitalize or function(str)
+    if type(str) ~= "string" then return str end
+    local res = str:lower():gsub("^%l", string.upper)
+    return res
+end
+
 -- TABLE/ARRAY UTILS
 
 ---@param tab any[]
----@param sep string
+---@param sep? string
 table.join = table.join or function(tab, sep)
     if type(tab) ~= "table" then return "" end
-    if type(sep) ~= "string" then return "" end
+    if type(sep) ~= "string" then sep = "" end
     local str = "";
     for i, v in ipairs(tab) do
         str = str .. tostring(v)
@@ -65,18 +73,46 @@ end
 
 ---@param target table<any, any>
 ---@param source table<any, any>
-table.assign = table.assign or function(target, source)
+---@param level? integer
+table.assign = table.assign or function(target, source, level)
     if type(target) ~= "table" or type(source) ~= "table" then return target end
+    if not level then
+        level = 1
+    elseif level >= 20 then
+        return {}
+    end
     for k, v in pairs(source) do
         if type(v) == "table" then
             if type(target[k]) ~= "table" then
                 target[k] = {}
             end
-            table.assign(target[k], v)
+            table.assign(target[k], v, level + 1)
         else
             target[k] = v
         end
     end
+end
+
+---@generic K, V
+---@param tab table<K, V>
+---@return table<K, V>
+---@param level? integer
+table.clone = table.clone or function(tab, level)
+    if type(tab) ~= "table" then return {} end
+    if not level then
+        level = 1
+    elseif level >= 20 then
+        return {}
+    end
+    local res = {}
+    for k, v in pairs(tab) do
+        if type(v) == "table" then
+            res[k] = table.clone(v, level + 1)
+        elseif type(v) ~= "function" then
+            res[k] = v
+        end
+    end
+    return res
 end
 
 ---@generic K, V, T
@@ -129,6 +165,7 @@ table.some = table.some or function(tab, someFn)
     end
     return false
 end
+table.any = table.some
 
 ---@generic K, V
 ---@param tab table<K, V>
@@ -145,6 +182,7 @@ table.every = table.every or function(tab, everyFn)
     end
     return true
 end
+table.all = table.every
 
 ---@generic K, V, T
 ---@param tab table<K, V>

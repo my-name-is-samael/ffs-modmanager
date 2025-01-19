@@ -1,6 +1,5 @@
 ---@class ExampleMod : ModModule
 local M = {
-    ID = "MyExampleMod", -- optional, if omitted, will be the name of the parent folder
     Version = 1,
 }
 
@@ -38,16 +37,27 @@ function M.MyCustomEvent(ModManager, data1, data2)
     Log(M, LOG.INFO, string.format("MyCustomEvent received => %s ; %s", tostring(data1), tostring(data2)))
 end
 
+---@param ModManager ModManager
+local function OnPressCustomKey(ModManager)
+    Log(M, LOG.INFO, "Custom key pressed !")
+end
+
+---@param ModManager ModManager
+local function OnPressCustomKey2(ModManager)
+    Log(M, LOG.INFO, "Custom key 2 pressed !")
+    ModManager.PlaySound(M, M.DingSound)
+end
+
 -- when the mod is loaded
 ---@param ModManager ModManager
 function M.Init(ModManager)
-    Log(M, LOG.INFO, "Example Init")
+    Log(M, LOG.INFO, "Example Init !")
 
     -- Example Hook 1
     ModManager.AddHook(M, "ExampleHookMainMenuSingleplayerButton",
         "/Game/UI/MainMenu/W_MainMenu.W_MainMenu_C:BndEvt__W_MainMenu_SingleplayerBtn_K2Node_ComponentBoundEvent_0_OnButtonPressed__DelegateSignature",
         OnClickSingleplayerButton, -- callback
-        function(ModManager2) -- condition to enable and disable the hook
+        function(ModManager2)      -- condition to enable and disable the hook
             return ModManager2.AppState == APP_STATES.MAIN_MENU
         end
     )
@@ -76,6 +86,16 @@ function M.Init(ModManager)
         -- can return false if the command is not meant for the mod or the mod wants to hide it
         -- no return will accept the command for this mod
     end)
+
+    ModManager.AddKey(M, Key.F3, "My example key 1", OnPressCustomKey, { ModifierKey.SHIFT, ModifierKey.CONTROL })
+
+    M.DingSound = ModManager.AddSound(M, "ding.wav")
+    ModManager.AddKey(M, Key.F6, "My example key 2 with sound", OnPressCustomKey2)
+
+end
+
+function M.Unload(ModManager)
+    Log(M, LOG.INFO, "Example Unloaded !")
 end
 
 return M

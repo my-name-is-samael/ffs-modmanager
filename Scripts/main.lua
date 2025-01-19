@@ -1,145 +1,80 @@
 -- Created by TontonSamael --
 
-local Utils = require("utils")
+Utils = require("utils")
+
+require("types")
 
 local VERSION = 1
 
----@enum AppState
-APP_STATES = {
-    MAIN_MENU = 0,
-    IN_GAME = 1,
-}
-
----@class ModManager
----@field AppState AppState::type
----@field GameState? ABP_BakeryGameState_Ingame_C
----@field UE4SSBeta boolean
+---@type ModManager
 local ModManager = {
+    DEBUG = false,
+    ID = "ModManager",
     AppState = APP_STATES.MAIN_MENU,
     GameState = nil,
 
     UE4SSBeta = false,
+
+    -- TMP functions
+    Loop = function() end,
+    AddHook = function() end,
+    AddCommand = function() end,
+    AddKey = function() end,
+    Trigger = function() end,
 }
 
--- Will log your message with the format : [Lua] [<Tag>] <message>
+-- Will log your message with the format : [<Type>] [<Tag>] <message>
+---@param Mod ModModule
+---@param Type LogType
 ---@param Msg any
----@param Tag? string
 ---@param Ar? any
-function Log(Msg, Tag, Ar)
-    Msg = string.format("[%s] %s\n", Tag or "Logger", tostring(Msg))
-    print(Msg)
-    if Ar then
-        pcall(Ar.Log, Ar, Msg)
-    end
-end
-
-local Hooks = {}
-local function ToggleHooks()
-    for HookName, Hook in pairs(Hooks) do
-        if not Hook.Enabled and (not Hook.CondFn or Hook.CondFn(ModManager)) then
-            Log(string.format("Loadind hook %s ...", HookName), "INFO")
-            Hook.Enabled, Hook.PreID, Hook.PostID = pcall(RegisterHook, Hook.Key,
-                function(...) Hook:HookFn(ModManager, ...) end)
-            if not Hook.Enabled then
-                Log(string.format("Failed to register hook %s", HookName), "ERROR")
-                Hook.PreID()
-                Hook.PreID = nil
-            end
-        elseif Hook.Enabled and Hook.CondFn and not Hook.CondFn(ModManager) then
-            Log(string.format("Unloading hook %s ...", HookName), "INFO")
-            pcall(UnregisterHook, Hook.Key, Hook.PreID, Hook.PostID)
-            -- both cases error or not, the hook is invalidated
-            Hook.Enabled, Hook.PreID, Hook.PostID = nil, nil, nil
+function Log(Mod, Type, Msg, Ar)
+    if Type ~= LOG.DEBUG or ModManager.DEBUG then
+        Msg = string.format("[%s] [%s] %s\n", Type, Mod.ID, tostring(Msg))
+        print(Msg)
+        if Ar then -- log in game console (F10)
+            pcall(Ar.Log, Ar, Msg)
         end
     end
 end
 
----@param Name string
----@param Key string Use Fmodel and UE4SS Lua Types dump to get thoses
----@param Callback fun(ModManager : ModManager, object : RemoteUnrealParam, ... : RemoteUnrealParam)
----@param Condition? fun(ModManager : ModManager): boolean
-function ModManager.AddHook(Name, Key, Callback, Condition)
-    if Hooks[Name] then
-        Log(string.format("Hook %s already exists", Name), "ERROR")
-    else
-        Hooks[Name] = {
-            Key = Key,
-            HookFn = Callback,
-            CondFn = Condition,
-        }
-    end
-end
+---@type table<string, ModCache>
+local Mods = {}
 
-local commands = {}
-
----@param CommandName string
----@param Callback fun(ModManager : ModManager, Parameters: table, Ar: any): boolean?
-function ModManager.AddCommand(CommandName, Callback)
-    if commands[CommandName] then
-        Log(string.format("Command %s already exists", CommandName), "ERROR")
-    else
-        commands[CommandName] = Callback
-        RegisterConsoleCommandHandler(CommandName, function(FullCommand, Parameters, Ar)
-            local result = Callback(ModManager, Parameters, Ar)
-            if result == nil then
-                return true
-            end
-            return result
-        end)
-        Log(string.format("Command %s registered", CommandName), "INFO")
-    end
-end
-
----@param Timeout number
----@param Callback fun(ModManager : ModManager): boolean
-function ModManager.Loop(Timeout, Callback)
-    LoopAsync(Timeout, function()
-        return Callback(ModManager)
-    end)
-end
-
-local function detectUE4SSBeta()
-    if Utils.isDir("ue4ss\\") then
-        ModManager.UE4SSBeta = true
-    end
-end
-
-local submods = {}
-
----@param EventName string
----@param ... any
-function Trigger(EventName, ...)
-    for _, submod in pairs(submods) do
-        if type(submod[EventName]) == "function" then
-            submod[EventName](ModManager, ...)
-        end
-    end
-end
-
-ModManager.Trigger = Trigger
-
-local function TryLoadSubMod(Name, MainPath)
+local function TryLoadMod(Name, MainPath)
+    Mods[Name] = {
+        Loaded = false,
+        LastLoadedTime = -1,
+    }
     local status, submod = pcall(require, MainPath)
     if status and type(submod) == "table" then
-        if not submod.Version then
-            Log(string.format("Submod '%s' has no version", Name), "WARNING")
-        elseif submod.Version < VERSION then
-            Log(
-                string.format("Submod '%s' is outdated (ModManager Version: %s, Submod Version: %s)", Name, VERSION,
-                    submod.Version), "WARNING")
+        if submod.ID then
+            table.assign(submod, { ID = Name })
         end
-        submods[Name] = submod
-        Log(string.format("Submod '%s' loaded", Name))
+        if not submod.Version then
+            Log(ModManager, LOG.WARN, string.format("Submod '%s' has no version", Name))
+        elseif submod.Version < VERSION then
+            Log(ModManager,
+                LOG.WARN,
+                string.format("Submod '%s' is outdated (ModManager Version: %s, Submod Version: %s)", Name, VERSION,
+                    submod.Version))
+        end
+        table.assign(Mods[Name], submod)
+        Mods[Name].Loaded = true
+        Log(ModManager, LOG.INFO, string.format("Submod '%s' loaded (%s)", Name, submod.ID))
     else
         if not status then
-            Log(string.format("Failed to load submod '%s' : %s", Name, submod), "ERROR")
+            Mods[Name].LoadError = submod
+            Log(ModManager, LOG.ERR, string.format("Failed to load submod '%s' : %s", Name, submod))
         else
-            Log(string.format("Failed to load submod '%s' : Not a module", Name), "ERROR")
+            Mods[Name].LoadError = "Not a module"
+            Log(ModManager, LOG.ERR, string.format("Failed to load submod '%s' : Not a module", Name))
         end
     end
+    Mods[Name].LastLoadedTime = os.time()
 end
 
-local function LoadSubMods()
+local function LoadMods()
     local absModDir = tostring(package.cpath):split(";")[1]:gsub("?.dll", "")
     local modDir = ""
     if ModManager.UE4SSBeta then
@@ -152,16 +87,161 @@ local function LoadSubMods()
         local path = absModDir .. dir
         if Utils.isDir(path) and Utils.fileExists(path .. "\\main.lua") then
             local subModPath = modDir .. dir .. "\\main"
-            TryLoadSubMod(dir, subModPath)
+            TryLoadMod(dir, subModPath)
         end
     end
 end
 
+local function ToggleHooks()
+    table.forEach(Mods, function(Mod)
+        if Mod.Hooks then
+            table.forEach(Mod.Hooks, function(Hook, HookName)
+                if not Hook.Enabled and (not Hook.CondFn or Hook.CondFn(ModManager)) then
+                    Log(ModManager, LOG.DEBUG, string.format("Loadind hook %s ...", HookName))
+                    Hook.Enabled, Hook.PreID, Hook.PostID = pcall(RegisterHook, Hook.Key,
+                        function(...) Hook.CallbackFn(ModManager, ...) end)
+                    if not Hook.Enabled then
+                        Log(ModManager, LOG.ERR, string.format("Failed to register hook %s", HookName))
+                        Hook.PreID()
+                        Hook.PreID = nil
+                    end
+                elseif Hook.Enabled and Hook.CondFn and not Hook.CondFn(ModManager) then
+                    Log(ModManager, LOG.DEBUG, string.format("Unloading hook %s ...", HookName))
+                    pcall(UnregisterHook, Hook.Key, Hook.PreID, Hook.PostID)
+                    -- both cases error or not, the hook is invalidated
+                    Hook.Enabled, Hook.PreID, Hook.PostID = nil, nil, nil
+                end
+            end)
+        end
+    end)
+end
+
+function ModManager.Loop(Mod, Timeout, Callback)
+    local CachedMod = table.find(Mods, function(Mod2) return Mod2.ID == Mod.ID end)
+    if CachedMod then
+        LoopAsync(Timeout, function()
+            -- maybe bench loop process to warn for heavy duty tasks
+            return Callback(ModManager)
+        end)
+    end
+end
+
+function ModManager.AddHook(Mod, Name, Key, Callback, Condition)
+    local CachedMod = table.find(Mods, function(Mod2) return Mod2.ID == Mod.ID end)
+    if CachedMod then
+        if not CachedMod.Hooks then
+            CachedMod.Hooks = {}
+        end
+        if CachedMod.Hooks[Name] then
+            Log(Mod, LOG.WARN, string.format("Hook %s already exists", Name))
+        else
+            CachedMod.Hooks[Name] = {
+                Enabled = false,
+                Key = Key,
+                CallbackFn = Callback,
+                CondFn = Condition,
+            }
+            Log(Mod, LOG.INFO, string.format("Hook %s registered", Name))
+        end
+    end
+end
+
+function ModManager.AddCommand(Mod, CommandName, Callback)
+    local CachedMod = table.find(Mods, function(Mod2) return Mod2.ID == Mod.ID end)
+    if CachedMod then
+        if not CachedMod.Commands then
+            CachedMod.Commands = {}
+        end
+        if CachedMod.Commands[CommandName] then
+            Log(ModManager, LOG.ERR, string.format("Command %s already exists", CommandName))
+        else
+            local status, err = RegisterConsoleCommandHandler(CommandName, function(FullCommand, Parameters, Ar)
+                local result = Callback(ModManager, Parameters, Ar)
+                if result == nil then
+                    return true
+                end
+                return result
+            end)
+            if status then
+                CachedMod.Commands[CommandName] = {
+                    Command = CommandName,
+                    Enabled = true,
+                    CallBackFn = Callback
+                }
+                Log(ModManager, LOG.INFO, string.format("Command %s registered", CommandName))
+            else
+                CachedMod.Commands[CommandName] = {
+                    Command = CommandName,
+                    Enabled = false,
+                    Error = err
+                }
+                Log(ModManager, LOG.ERR, string.format("Failed to register command %s : %s", CommandName, err))
+            end
+        end
+    end
+end
+
+function ModManager.AddKey(Mod, Key, Description, Callback, Modifiers)
+    local CachedMod = table.find(Mods, function(Mod2) return Mod2.ID == Mod.ID end)
+    if CachedMod then
+        if not CachedMod.Keys then
+            CachedMod.Keys = {}
+        end
+        if CachedMod.Keys[Key] then
+            Log(Mod, LOG.WARN, string.format("Key %s already exists", Key))
+        else
+            local status, err
+            if type(Modifiers) == "table" then
+                status, err = pcall(RegisterKeyBind, Key, Modifiers, Callback)
+            else
+                status, err = pcall(RegisterKeyBind, Key, Callback)
+            end
+            if not status then
+                CachedMod.Keys[Key] = {
+                    Key = Key,
+                    Description = Description,
+                    Enabled = false,
+                    LoadError = err,
+                    Modifiers = Modifiers,
+                }
+                Log(Mod, LOG.ERR, string.format("Failed to register key %s : %s", Key, err))
+            else
+                CachedMod.Keys[Key] = {
+                    Key = Key,
+                    Description = Description,
+                    Enabled = true,
+                    CallbackFn = Callback,
+                    Modifiers = Modifiers,
+                }
+                Log(Mod, LOG.INFO, string.format("Key %s registered", Key))
+            end
+        end
+    end
+end
+
+function ModManager.Trigger(Mod, EventName, ...)
+    Log(Mod, LOG.DEBUG, string.format("Triggering event %s", EventName))
+    for k, CachedMod in pairs(Mods) do
+        if type(CachedMod[EventName]) == "function" then
+            Log(CachedMod, LOG.DEBUG, string.format("Catching event %s", EventName))
+            CachedMod[EventName](Mod, ...)
+        end
+    end
+end
+
+-- detect with version
+local function detectUE4SSBeta()
+    if Utils.isDir("ue4ss\\") then
+        ModManager.UE4SSBeta = true
+    end
+end
+
+-- TODO improve by constructor and onDestruct hooks
 local function initAppStateHooks()
     local function LoopDetectLobby()
-        ModManager.Loop(500, function(M)
+        ModManager.Loop(ModManager, 500, function(M)
             if not M.GameState or not M.GameState:IsValid() then
-                ---@class ABP_BakeryGameState_Ingame_C
+                ---@return ABP_BakeryGameState_Ingame_C
                 M.GameState = FindFirstOf("BP_BakeryGameState_Ingame_C")
                 if M.GameState:IsValid() then
                     M.AppState = APP_STATES.IN_GAME
@@ -173,7 +253,8 @@ local function initAppStateHooks()
     LoopDetectLobby()
 
     -- Hook to detect when get back to main menu
-    ModManager.AddHook("UpdateStateMenu", "/Game/UI/Ingame/EscapeMenu/W_EscapeMenu.W_EscapeMenu_C:OnMainMenuConfirmation",
+    ModManager.AddHook(ModManager, "UpdateStateMenu",
+        "/Game/UI/Ingame/EscapeMenu/W_EscapeMenu.W_EscapeMenu_C:OnMainMenuConfirmation",
         function(M, GameState, bConfirmed)
             if bConfirmed:get() then
                 ModManager.AppState = APP_STATES.MAIN_MENU
@@ -185,18 +266,18 @@ end
 local function Init()
     detectUE4SSBeta()
 
-    LoadSubMods()
+    LoadMods()
 
     initAppStateHooks()
-    Trigger("Init")
+    ModManager.Trigger(ModManager, "Init")
 
     -- hooks enabling loop
-    ModManager.Loop(1000, function(M)
+    ModManager.Loop(ModManager, 1000, function()
         ToggleHooks()
         return false
     end)
 
-    Log("ModManager Loaded!", "INFO")
+    Log(ModManager, LOG.INFO, "ModManager Loaded!")
 end
 
 Init()

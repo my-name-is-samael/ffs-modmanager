@@ -1,12 +1,13 @@
+---@class ExampleMod : ModModule
 local M = {
-    log = "ExampleMod",
+    ID = "MyExampleMod", -- optional, if omitted, will be the name of the parent folder
     Version = 1,
 }
 
 ---@param ModManager ModManager
 ---@param MainMenu RemoteUnrealParam
 local function OnClickSingleplayerButton(ModManager, MainMenu)
-    Log("SinglePlayer button clicked", M.log)
+    Log(M, LOG.INFO, "SinglePlayer button clicked")
 end
 
 ---@param ModManager ModManager
@@ -27,23 +28,23 @@ local function onOrderMonitorInteraction(ModManager, OrderMonitor, Interactor, b
         table.insert(strParams, string.format("%s = %s", k, tostring(v)))
     end
 
-    Log(string.format("OrderMonitor interacted with (%s)", table.join(strParams, " ; ")), M.log)
+    Log(M, LOG.INFO, string.format("OrderMonitor interacted with (%s)", table.join(strParams, " ; ")))
 end
 
 ---@param ModManager ModManager
 ---@param data1 number
 ---@param data2 boolean
 function M.MyCustomEvent(ModManager, data1, data2)
-    Log(string.format("MyCustomEvent received => %s ; %s", tostring(data1), tostring(data2)), M.log)
+    Log(M, LOG.INFO, string.format("MyCustomEvent received => %s ; %s", tostring(data1), tostring(data2)))
 end
 
 -- when the mod is loaded
 ---@param ModManager ModManager
 function M.Init(ModManager)
-    Log("Init", M.log)
+    Log(M, LOG.INFO, "Example Init")
 
     -- Example Hook 1
-    ModManager.AddHook("ExampleHookMainMenuSingleplayerButton",
+    ModManager.AddHook(M, "ExampleHookMainMenuSingleplayerButton",
         "/Game/UI/MainMenu/W_MainMenu.W_MainMenu_C:BndEvt__W_MainMenu_SingleplayerBtn_K2Node_ComponentBoundEvent_0_OnButtonPressed__DelegateSignature",
         OnClickSingleplayerButton, -- callback
         function(ModManager2) -- condition to enable and disable the hook
@@ -52,7 +53,7 @@ function M.Init(ModManager)
     )
 
     -- Example Hook 2
-    ModManager.AddHook("ExampleHookInGameOrderMonitorInteraction",
+    ModManager.AddHook(M, "ExampleHookInGameOrderMonitorInteraction",
         "/Game/Blueprints/Gameplay/Restaurant/BP_OrderMonitor.BP_OrderMonitor_C:OrderMonitorInteractionStarted",
         onOrderMonitorInteraction,
         function(ModManager2)
@@ -62,16 +63,16 @@ function M.Init(ModManager)
 
     -- Example Loop
     local value = 0
-    ModManager.Loop(1000, function(ModManager2)
+    ModManager.Loop(M, 1000, function(ModManager2)
         value = value + 1
         -- Example Custom Event
-        Trigger("MyCustomEvent", value, true)
+        ModManager2.Trigger(M, "MyCustomEvent", value, true)
         return value == 5 -- loop stops when value reaches 5
     end)
 
     -- Example command
-    ModManager.AddCommand("example", function(ModManager2, Parameters, Ar)
-        Log(string.format("Here is an example command (%s)", table.join(Parameters, " ; ")), M.log, Ar)
+    ModManager.AddCommand(M, "example", function(ModManager2, Parameters, Ar)
+        Log(M, LOG.INFO, string.format("Here is an example command (%s)", table.join(Parameters, " ; ")), Ar)
         -- can return false if the command is not meant for the mod or the mod wants to hide it
         -- no return will accept the command for this mod
     end)

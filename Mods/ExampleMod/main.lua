@@ -40,6 +40,7 @@ end
 ---@param ModManager ModManager
 local function OnPressCustomKey(ModManager)
     Log(M, LOG.INFO, "Custom key pressed !")
+    Log(M, LOG.INFO, string.format("My Mod Folder : %s", ModManager.GetAbsolutePath(M)))
 end
 
 ---@param ModManager ModManager

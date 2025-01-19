@@ -26,6 +26,7 @@ local ModManager = {
     Trigger = function() end,
     AddSound = function() return -1 end,
     PlaySound = function() end,
+    GetAbsolutePath = function() return "" end,
 }
 
 -- Will log your message with the format : [<Type>] [<Tag>] <message>
@@ -105,10 +106,12 @@ local function ToggleHooks()
                 if not Hook.Enabled and (not Hook.CondFn or Hook.CondFn(ModManager)) then
                     Log(ModManager, LOG.DEBUG, string.format("Loadind hook %s ...", HookName))
                     Hook.Enabled, Hook.PreID, Hook.PostID = pcall(RegisterHook, Hook.Key,
-                        function(...) Hook.CallbackFn(ModManager, ...) end)
+                        function(...) Hook.CallbackFn(ModManager, ...) end,
+                        function() end)
                     if not Hook.Enabled then
                         Log(ModManager, LOG.ERR, string.format("Failed to register hook %s", HookName))
-                        Hook.PreID()
+                        --Hook.PreID()
+                        print(type(Hook.PreID))
                         Hook.PreID = nil
                     end
                 elseif Hook.Enabled and Hook.CondFn and not Hook.CondFn(ModManager) then
@@ -308,42 +311,115 @@ function ModManager.PlaySound(Mod, SoundID)
     if CachedMod and SoundID > -1 then
         if CachedMod.Sounds and CachedMod.Sounds[SoundID] then
             -- play sound async
-            io.popen(string.format("powershell -c (New-Object Media.SoundPlayer '%s').PlaySync();", CachedMod.Sounds[SoundID]))
+            io.popen(string.format("powershell -c (New-Object Media.SoundPlayer '%s').PlaySync();",
+                CachedMod.Sounds[SoundID]))
         end
     end
 end
 
--- TODO improve by constructor and onDestruct hooks
-local function initAppStateHooks()
-    local function LoopDetectLobby()
-        ModManager.Loop(ModManager, 500, function(M)
-            if not M.GameState or not M.GameState:IsValid() then
-                ---@return ABP_BakeryGameState_Ingame_C
-                M.GameState = FindFirstOf("BP_BakeryGameState_Ingame_C")
-                if M.GameState:IsValid() then
-                    M.AppState = APP_STATES.IN_GAME
+function ModManager.GetAbsolutePath(Mod)
+    local CachedMod = table.find(Mods, function(Cached) return Cached.ID == Mod.ID end)
+    if not CachedMod then
+        return ""
+    end
+
+    return string.format("%sMods\\%s\\", AbsPath, CachedMod.ID)
+end
+
+---@param M ModManager
+---@param Parameters string[]
+---@param Ar any
+local function Reload(M, Parameters, Ar)
+    local usageStr = "Usage : reload <all|mod_name>"
+
+    ---@param Mod ModCache
+    local function ReloadMod(Mod)
+        if type(Mod.Unload) == "function" then
+            Mod.Unload(M)
+        end
+        for HookName, Hook in pairs(Mod.Hooks) do
+            if Hook.Enabled then
+                UnregisterHook(Hook.Key, Hook.PreID, Hook.PostID)
+            end
+            Mod.Hooks[HookName] = nil
+            -- commands cannot be reloaded for now
+            -- keys cannot be reloaded for now
+        end
+        if type(Mod.Init) == "function" then
+            Mod.Init(M)
+        end
+    end
+
+    if #Parameters < 1 then
+        Log(M, LOG.ERR, usageStr, Ar)
+        return true
+    else
+        local Param = table.join(Parameters)
+        if Param == "all" then
+            for _, Mod in pairs(Mods) do
+                if Mod.ID ~= ModManager.ID then
+                    ReloadMod(Mod)
                 end
             end
-            return M.GameState and M.GameState:IsValid() or false
-        end)
-    end
-    LoopDetectLobby()
+            return true
+        end
 
-    -- Hook to detect when get back to main menu
-    ModManager.AddHook(ModManager, "UpdateStateMenu",
-        "/Game/UI/Ingame/EscapeMenu/W_EscapeMenu.W_EscapeMenu_C:OnMainMenuConfirmation",
-        function(M, GameState, bConfirmed)
-            if bConfirmed:get() then
-                ModManager.AppState = APP_STATES.MAIN_MENU
-                LoopDetectLobby()
+        local Mod = Mods[Param]
+        if not Mod or Param == ModManager.ID then
+            Log(M, LOG.ERR, string.format("Mod %s not found", Param), Ar)
+            return true
+        end
+
+        ReloadMod(Mod)
+
+        Log(M, LOG.INFO, string.format("Mod %s reloaded", Param), Ar)
+        return true
+    end
+end
+
+local function InitData()
+    -- ModManager is treated like a regular mod
+    Mods[ModManager.ID] = {
+        ID = ModManager.ID,
+        Name = "ModManager",
+        Enabled = true,
+        Version = VERSION,
+    }
+
+    ModManager.AddHook(ModManager, "OnGameStateConstruct",
+        "/Script/Engine.PlayerController:ClientRestart",
+        function()
+            ModManager.GameState = FindFirstOf("BP_BakeryGameState_Ingame_C")
+            if ModManager.GameState:IsValid() then
+                if ModManager.AppState ~= APP_STATES.IN_GAME then
+                    ModManager.AppState = APP_STATES.IN_GAME
+                    ModManager.Trigger(ModManager, "AppStateChanged", ModManager.AppState)
+                end
+            else
+                if ModManager.AppState ~= APP_STATES.MAIN_MENU then
+                    ModManager.AppState = APP_STATES.MAIN_MENU
+                    ModManager.Trigger(ModManager, "AppStateChanged", ModManager.AppState)
+                end
             end
-        end, function(Hook) return ModManager.AppState ~= APP_STATES.MAIN_MENU end)
+        end)
+
+    -- first init state
+    ModManager.GameState = FindFirstOf("BP_BakeryGameState_Ingame_C")
+    if ModManager.GameState:IsValid() then
+        if ModManager.AppState ~= APP_STATES.IN_GAME then
+            ModManager.AppState = APP_STATES.IN_GAME
+            ModManager.Trigger(ModManager, "AppStateChanged", ModManager.AppState)
+        end
+    end
+
+    ModManager.AddCommand(ModManager, "reload", Reload)
 end
 
 local function Init()
     LoadMods()
 
-    initAppStateHooks()
+    InitData()
+
     ModManager.Trigger(ModManager, "Init")
 
     -- hooks enabling loop

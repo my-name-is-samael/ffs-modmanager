@@ -265,4 +265,15 @@ table.values = table.values or function(tab)
     return res
 end
 
+table.includes = table.includes or function(tab, el)
+    if type(tab) ~= "table" then return false end
+    for _, v in pairs(tab) do
+        if v == el then
+            return true
+        end
+    end
+    return false
+end
+table.contains = table.includes
+
 return Utils

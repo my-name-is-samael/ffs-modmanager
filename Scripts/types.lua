@@ -24,12 +24,13 @@ LOG = {
 ---@field AppState AppState::type
 ---@field GameState? UObject|ABP_BakeryGameState_Ingame_C
 ---@field Loop fun(Mod: ModModule, Timeout: integer, Callback: fun(ModManager : ModManager): boolean)
----@field AddHook fun(Mod : ModModule, Name: string, Key : string, Callback: fun(ModManager : ModManager, object : RemoteUnrealParam, ... : RemoteUnrealParam), Condition: fun(ModManager : ModManager): boolean)
+---@field AddHook fun(Mod : ModModule, Name: string, Key : string, Callback: fun(ModManager : ModManager, object : RemoteUnrealParam, ... : RemoteUnrealParam), Condition?: fun(ModManager : ModManager): boolean)
 ---@field AddCommand fun(Mod : ModModule, CommandName: string, Callback: fun(ModManager : ModManager, Parameters: table, Ar: any): boolean?)
 ---@field AddKey fun(Mod : ModModule, Key: Key, Description: string, Callback: fun(ModManager : ModManager), Modifiers?: ModifierKey[])
 ---@field Trigger fun(Mod : ModModule, EventName: string, ...: any)
 ---@field AddSound fun(Mod : ModModule, SoundPath: string): SoundID: integer
 ---@field PlaySound fun(Mod: ModModule, SoundID: integer)
+---@field GetAbsolutePath fun(Mod: ModModule): string
 
 ---@class HookCache
 ---@field Key string

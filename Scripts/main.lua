@@ -18,8 +18,6 @@ local ModManager = {
     AppState = APP_STATES.MAIN_MENU,
     GameState = nil,
 
-    UE4SSBeta = false,
-
     -- TMP functions
     Loop = function() end,
     AddHook = function() end,
@@ -315,13 +313,6 @@ function ModManager.PlaySound(Mod, SoundID)
     end
 end
 
--- detect with version
-local function detectUE4SSBeta()
-    if Utils.isDir("ue4ss\\") then
-        ModManager.UE4SSBeta = true
-    end
-end
-
 -- TODO improve by constructor and onDestruct hooks
 local function initAppStateHooks()
     local function LoopDetectLobby()
@@ -350,8 +341,6 @@ local function initAppStateHooks()
 end
 
 local function Init()
-    detectUE4SSBeta()
-
     LoadMods()
 
     initAppStateHooks()

@@ -1,0 +1,2 @@
+# ffs-modmanager
+FFS-ModManager

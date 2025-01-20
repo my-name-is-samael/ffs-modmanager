@@ -1,11 +1,39 @@
 -- Created by TontonSamael --
 
-local Utils = {}
+---@param obj any
+---@param key? any
+---@param level? integer
+function Dump(obj, key, level)
+    level = level or 0
+    local keyPrefix = ""
+    if key ~= nil then
+        keyPrefix = string.format("%s (%s) = ", tostring(key), type(key))
+    end
+    local indent = ""
+    for _ = 1, level do
+        indent = indent .. "  "
+    end
+
+    if type(obj) == "table" then
+        print(string.format("%s%s{ (table)", indent, keyPrefix))
+        if level < 20 then
+            for k, v in pairs(obj) do
+                Utils.Dump(v, k, level + 1)
+            end
+        else
+            print(string.format("%sMax level reached", indent))
+        end
+        print(string.format("%s}", indent))
+    else
+        print(string.format("%s%s%s (%s)", indent, keyPrefix, tostring(obj), type(obj)))
+    end
+end
 
 -- FILE UTILS
 
+_G.file = {}
 ---@param path string
-function Utils.fileExists(path)
+function file.exists(path)
     if type(path) ~= "string" then return false end
     if #path == 0 then return false end
     if string.sub(path, -1) ~= "/" then
@@ -21,10 +49,10 @@ function Utils.fileExists(path)
 end
 
 ---@param path string
-function Utils.isDir(path)
+function file.isDir(path)
     if type(path) ~= "string" then return false end
     if #path == 0 then return false end
-    if not Utils.fileExists(path) then return false end
+    if not file.exists(path) then return false end
     local file = io.open(path, "r")
     if file then
         return false
@@ -275,5 +303,3 @@ table.includes = table.includes or function(tab, el)
     return false
 end
 table.contains = table.includes
-
-return Utils

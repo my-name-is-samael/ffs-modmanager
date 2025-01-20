@@ -1,6 +1,7 @@
 -- Created by TontonSamael --
 
-Utils = require("utils")
+JSON = require("json")
+require("utils")
 
 require("types")
 
@@ -83,7 +84,7 @@ local function LoadMods()
     local ModsDir = AbsPath .. "Mods\\"
     for dir in io.popen("dir \"" .. ModsDir .. "\" /b"):lines() do
         local path = ModsDir .. dir
-        if Utils.isDir(path) and Utils.fileExists(path .. "\\main.lua") then
+        if file.isDir(path) and file.exists(path .. "\\main.lua") then
             TryLoadMod(dir)
         end
     end
@@ -285,7 +286,7 @@ function ModManager.AddSound(Mod, SoundPath)
         return -1
     end
     local AbsSoundPath = string.format("%sMods\\%s\\%s", AbsPath, Mod.ID, SoundPath)
-    if not Utils.fileExists(AbsSoundPath) or Utils.isDir(AbsSoundPath) then
+    if not file.exists(AbsSoundPath) or file.isDir(AbsSoundPath) then
         Log(Mod, LOG.ERR, string.format("Invalid sound path %s", SoundPath))
         return -1
     end
@@ -342,9 +343,11 @@ local function ReloadCommand(M, Parameters, Ar)
                 UnregisterHook(Hook.Key, Hook.PreID, Hook.PostID)
             end
             Mod.Hooks[HookName] = nil
-            -- commands cannot be reloaded for now
-            -- keys cannot be reloaded for now
         end
+        Mod.Hooks = nil
+        -- commands cannot be reloaded for now
+        -- keys cannot be reloaded for now
+        Mod.Sounds = nil
         if type(Mod.Init) == "function" then
             Mod.Init(M)
         end
@@ -361,6 +364,7 @@ local function ReloadCommand(M, Parameters, Ar)
                     ReloadMod(Mod)
                 end
             end
+            Log(M, LOG.INFO, "All mods reloaded", Ar)
             return true
         end
 
@@ -429,6 +433,8 @@ local function Init()
     end)
 
     Log(ModManager, LOG.INFO, "ModManager Loaded!")
+
+    --local LogicMods = IterateGameDirectories().Game.Content.Paks.LogicMods;
 end
 
 Init()

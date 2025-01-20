@@ -18,7 +18,7 @@ function Dump(obj, key, level)
         print(string.format("%s%s{ (table)", indent, keyPrefix))
         if level < 20 then
             for k, v in pairs(obj) do
-                Utils.Dump(v, k, level + 1)
+                Dump(v, k, level + 1)
             end
         else
             print(string.format("%sMax level reached", indent))

@@ -410,7 +410,7 @@ local function InitData()
         "/Script/Engine.PlayerController:ClientRestart",
         function()
             ModManager.GameState = FindFirstOf("BP_BakeryGameState_Ingame_C")
-            if ModManager.GameState:IsValid() then
+            if ModManager.GameState and ModManager.GameState:IsValid() then
                 if ModManager.AppState ~= APP_STATES.IN_GAME then
                     ModManager.AppState = APP_STATES.IN_GAME
                     ModManager.Trigger(ModManager, "AppStateChanged", ModManager.AppState)
@@ -425,7 +425,7 @@ local function InitData()
 
     -- first init state
     ModManager.GameState = FindFirstOf("BP_BakeryGameState_Ingame_C")
-    if ModManager.GameState:IsValid() then
+    if ModManager.GameState and ModManager.GameState:IsValid() then
         if ModManager.AppState ~= APP_STATES.IN_GAME then
             ModManager.AppState = APP_STATES.IN_GAME
             ModManager.Trigger(ModManager, "AppStateChanged", ModManager.AppState)

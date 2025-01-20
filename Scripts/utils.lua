@@ -32,6 +32,7 @@ end
 -- FILE UTILS
 
 _G.file = {}
+
 ---@param path string
 function file.exists(path)
     if type(path) ~= "string" then return false end

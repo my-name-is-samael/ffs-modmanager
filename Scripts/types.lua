@@ -22,7 +22,7 @@ LOG = {
 ---@field DEBUG boolean
 ---@field Version? string
 ---@field AppState AppState::type
----@field GameState? UObject|ABP_BakeryGameState_Ingame_C
+---@field GameState? ABP_BakeryGameState_Ingame_C|UObject
 ---@field Loop fun(Mod: ModModule, Timeout: integer, Callback: fun(ModManager : ModManager): boolean)
 ---@field AddHook fun(Mod : ModModule, Name: string, Key : string, Callback: fun(ModManager : ModManager, object : RemoteUnrealParam, ... : RemoteUnrealParam), Condition?: fun(ModManager : ModManager): boolean)
 ---@field AddCommand fun(Mod : ModModule, CommandName: string, Callback: fun(ModManager : ModManager, Parameters: table, Ar: any): boolean?)

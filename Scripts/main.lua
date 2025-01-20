@@ -381,6 +381,22 @@ local function ReloadCommand(M, Parameters, Ar)
     end
 end
 
+local function DebugCommand(M, Parameters, Ar)
+    if #Parameters == 0 then
+        M.DEBUG = not M.DEBUG
+    else
+        local ValueStr = Parameters[1]
+        if not table.includes({"true", "false"}, ValueStr) then
+            Log(M, LOG.ERR, string.format("Invalid value %s", ValueStr), Ar)
+            return true
+        end
+
+        M.DEBUG = ValueStr == "true"
+    end
+    Log(M, LOG.INFO, string.format("Debug mode %s", M.DEBUG and "enabled" or "disabled"), Ar)
+    return true
+end
+
 local function InitData()
     -- ModManager is treated like a regular mod
     Mods[ModManager.ID] = {
@@ -417,6 +433,8 @@ local function InitData()
     end
 
     ModManager.AddCommand(ModManager, "reload", ReloadCommand)
+
+    ModManager.AddCommand(ModManager, "debug", DebugCommand)
 end
 
 local function Init()

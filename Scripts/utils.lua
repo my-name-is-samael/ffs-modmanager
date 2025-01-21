@@ -304,3 +304,35 @@ table.includes = table.includes or function(tab, el)
     return false
 end
 table.contains = table.includes
+
+-- MATH UTILS
+
+---@param value number
+---@param fromMin number
+---@param fromMax number
+---@param toMin number
+---@param toMax number
+---@return number
+math.map = math.map or function(value, fromMin, fromMax, toMin, toMax)
+    if not table.every({ value, fromMin, fromMax, toMin, toMax }, function(V) return type(V) == "number" end) then
+        return value
+    end
+    return (value - fromMin) / (fromMax - fromMin) * (toMax - toMin) + toMin
+end
+math.scale = math.map
+
+---@param value number
+---@param min? number
+---@param max? number
+---@return number
+math.clamp = math.clamp or function(value, min, max)
+    if not table.every({ value, min, max }, function(V) return type(V) == "number" end) then
+        return value
+    end
+    if min ~= nil and value < min then
+        value = min
+    elseif max ~= nil and value > max then
+        value = max
+    end
+    return value
+end

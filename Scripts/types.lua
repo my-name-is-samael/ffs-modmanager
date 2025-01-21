@@ -15,16 +15,19 @@ LOG = {
 ---@class ModModule
 ---@field ID? string
 ---@field Version integer
+---@field Author string
 ---@field Init? fun(ModManager: ModManager)
+---@field AppStateChanged? fun(ModManager: ModManager, AppState: AppState)
 ---@field Unload? fun(ModManager: ModManager)
 
 ---@class ModManager : ModModule
 ---@field DEBUG boolean
----@field Version? string
----@field AppState AppState::type
+---@field Author? string
+---@field AppState AppState
 ---@field GameState? ABP_BakeryGameState_Ingame_C|UObject
+---@field IsHost boolean
 ---@field Loop fun(Mod: ModModule, Timeout: integer, Callback: fun(ModManager : ModManager): boolean)
----@field AddHook fun(Mod : ModModule, Name: string, Key : string, Callback: fun(ModManager : ModManager, object : RemoteUnrealParam, ... : RemoteUnrealParam), Condition?: fun(ModManager : ModManager): boolean)
+---@field AddHook fun(Mod : ModModule, Name: string, HookKey : string, Callback: (fun(ModManager : ModManager, object : RemoteUnrealParam, ... : RemoteUnrealParam):any), Condition?: fun(ModManager : ModManager): boolean)
 ---@field AddCommand fun(Mod : ModModule, CommandName: string, Callback: fun(ModManager : ModManager, Parameters: table, Ar: any): boolean?)
 ---@field AddKey fun(Mod : ModModule, Key: Key, Description: string, Callback: fun(ModManager : ModManager), Modifiers?: ModifierKey[])
 ---@field Trigger fun(Mod : ModModule, EventName: string, ...: any)
@@ -35,10 +38,10 @@ LOG = {
 ---@class HookCache
 ---@field Key string
 ---@field Enabled boolean
----@field CallbackFn fun(ModManager : ModManager, ... : any)
+---@field CallbackFn fun(ModManager : ModManager, ... : any): any
+---@field CondFn fun(ModManager : ModManager): boolean
 ---@field PreID? integer
 ---@field PostID? integer
----@field CondFn? fun(ModManager : ModManager): boolean
 
 ---@class CommandCache
 ---@field Command string

@@ -9,15 +9,20 @@ local AbsPath = debug.getinfo(1, "S").source
     :match("@(.*[/\\])")
     :gsub("scripts\\$", "")
 local RelPath = AbsPath:gsub("^.*(\\Win64\\Mods\\)", "Mods\\")
+    :gsub("^.*(\\Win64\\ue4ss\\Mods\\)", "ue4ss\\Mods\\")
 
-local VERSION = 1
+-- ENetRole.ROLE_Authority
+local ROLE_AUTHORITY = 3
 
 ---@type ModManager
 local ModManager = {
-    DEBUG = false,
     ID = "ModManager",
+    Version = 1,
+
+    DEBUG = true,
     AppState = APP_STATES.MAIN_MENU,
     GameState = nil,
+    IsHost = false,
 
     -- TMP functions
     Loop = function() end,
@@ -51,6 +56,7 @@ local Mods = {}
 local function TryLoadMod(Name)
     Mods[Name] = {
         ID = Name,
+        Author = "",
         Loaded = false,
         LastLoadedTime = -1,
     }
@@ -59,7 +65,7 @@ local function TryLoadMod(Name)
         submod.ID = Name
         if not submod.Version then
             Log(ModManager, LOG.WARN, string.format("Submod '%s' has no version", Name))
-        elseif submod.Version < VERSION then
+        elseif submod.Version < ModManager.Version then
             Log(ModManager,
                 LOG.WARN,
                 string.format("Submod '%s' is outdated (ModManager Version: %s, Submod Version: %s)", Name, VERSION,
@@ -102,46 +108,58 @@ end
 
 local function ToggleHooks()
     table.forEach(Mods, function(Mod)
-        if Mod.Hooks then
-            table.forEach(Mod.Hooks, function(Hook, HookName)
-                if not Hook.Enabled and (not Hook.CondFn or Hook.CondFn(ModManager)) then
-                    Log(ModManager, LOG.DEBUG, string.format("Loadind hook %s ...", HookName))
-                    Hook.Enabled, Hook.PreID, Hook.PostID = pcall(RegisterHook, Hook.Key,
-                        function(...) Hook.CallbackFn(ModManager, ...) end,
-                        function() end)
-                    if not Hook.Enabled then
-                        Log(ModManager, LOG.ERR, string.format("Failed to register hook %s", HookName))
-                        --Hook.PreID()
-                        print(type(Hook.PreID))
-                        Hook.PreID = nil
+        table.forEach(Mod.Hooks, function(Hook, HookName)
+            if not Hook.Enabled and Hook.CondFn(ModManager) then
+                Log(ModManager, LOG.DEBUG, string.format("Activating hook %s.%s ...", Mod.ID, HookName))
+                Hook.Enabled, Hook.PreID, Hook.PostID = pcall(RegisterHook, Hook.Key, function(...)
+                    Log(ModManager, LOG.DEBUG, string.format("Triggering hook %s.%s", Mod.ID, HookName))
+                    return Hook.CallbackFn(ModManager, ...)
+                end)
+                if Hook.Enabled then
+                    Log(ModManager, LOG.DEBUG, string.format("Hook %s.%s activated", Mod.ID, HookName))
+                else
+                    Log(ModManager, LOG.ERR, string.format("Failed to activate hook %s.%s", Mod.ID, HookName))
+                    if ModManager.DEBUG and type(Hook.PreID) == "function" then
+                        ExecuteInGameThread(function()
+                            -- executes in its own thread cause it's throwing an error
+                            Hook.PreID()
+                        end)
                     end
-                elseif Hook.Enabled and Hook.CondFn and not Hook.CondFn(ModManager) then
-                    Log(ModManager, LOG.DEBUG, string.format("Unloading hook %s ...", HookName))
-                    pcall(UnregisterHook, Hook.Key, Hook.PreID, Hook.PostID)
-                    -- both cases error or not, the hook is invalidated
-                    Hook.Enabled, Hook.PreID, Hook.PostID = nil, nil, nil
+                    Hook.PreID = nil
                 end
-            end)
-        end
+            elseif Hook.Enabled and not Hook.CondFn(ModManager) then
+                Log(ModManager, LOG.DEBUG, string.format("Disabling hook %s.%s ...", Mod.ID, HookName))
+                Hook.Enabled = false -- marked first for next loop pass
+                ExecuteInGameThread(function()
+                    -- In its own thread because it can throw an error, even with pcall
+                    pcall(UnregisterHook, Hook.Key, Hook.PreID, Hook.PostID)
+                end)
+                ExecuteInGameThread(function()
+                    -- In its own thread to be executed after the unregistering
+                    Hook.PreID, Hook.PostID = nil, nil
+                    Log(ModManager, LOG.DEBUG, string.format("Hook %s.%s disabled", Mod.ID, HookName))
+                end)
+            end
+        end)
     end)
 end
 
-function ModManager.AddHook(Mod, Name, Key, Callback, Condition)
+function ModManager.AddHook(Mod, Name, HookKey, Callback, Condition)
     local CachedMod = table.find(Mods, function(Cached) return Cached.ID == Mod.ID end)
     if CachedMod then
         if not CachedMod.Hooks then
             CachedMod.Hooks = {}
         end
         if CachedMod.Hooks[Name] then
-            Log(Mod, LOG.WARN, string.format("Hook %s already exists", Name))
+            Log(Mod, LOG.WARN, string.format("Hook %s.%s already exists", Mod.ID, Name))
         else
             CachedMod.Hooks[Name] = {
                 Enabled = false,
-                Key = Key,
+                Key = HookKey,
                 CallbackFn = Callback,
-                CondFn = Condition,
+                CondFn = Condition or function() return true end,
             }
-            Log(Mod, LOG.INFO, string.format("Hook %s registered", Name))
+            Log(Mod, LOG.INFO, string.format("Hook %s.%s registered", Mod.ID, Name))
         end
     end
 end
@@ -386,7 +404,7 @@ local function DebugCommand(M, Parameters, Ar)
         M.DEBUG = not M.DEBUG
     else
         local ValueStr = Parameters[1]
-        if not table.includes({"true", "false"}, ValueStr) then
+        if not table.includes({ "true", "false" }, ValueStr) then
             Log(M, LOG.ERR, string.format("Invalid value %s", ValueStr), Ar)
             return true
         end
@@ -403,33 +421,37 @@ local function InitData()
         ID = ModManager.ID,
         Name = "ModManager",
         Enabled = true,
-        Version = VERSION,
+        Version = ModManager.Version,
     }
 
     ModManager.AddHook(ModManager, "OnClientRestart",
         "/Script/Engine.PlayerController:ClientRestart",
         function()
             ModManager.GameState = FindFirstOf("BP_BakeryGameState_Ingame_C")
+            local changed = false
             if ModManager.GameState and ModManager.GameState:IsValid() then
                 if ModManager.AppState ~= APP_STATES.IN_GAME then
                     ModManager.AppState = APP_STATES.IN_GAME
-                    ModManager.Trigger(ModManager, "AppStateChanged", ModManager.AppState)
+                    changed = true
                 end
             else
                 if ModManager.AppState ~= APP_STATES.MAIN_MENU then
                     ModManager.AppState = APP_STATES.MAIN_MENU
-                    ModManager.Trigger(ModManager, "AppStateChanged", ModManager.AppState)
+                    changed = true
                 end
+            end
+            if changed then
+                ModManager.IsHost = ModManager.GameState:IsValid() and ModManager.GameState.Role == ROLE_AUTHORITY
+                ModManager.Trigger(ModManager, "AppStateChanged", ModManager.AppState)
             end
         end)
 
     -- first init state
     ModManager.GameState = FindFirstOf("BP_BakeryGameState_Ingame_C")
     if ModManager.GameState and ModManager.GameState:IsValid() then
-        if ModManager.AppState ~= APP_STATES.IN_GAME then
-            ModManager.AppState = APP_STATES.IN_GAME
-            ModManager.Trigger(ModManager, "AppStateChanged", ModManager.AppState)
-        end
+        ModManager.AppState = APP_STATES.IN_GAME
+        ModManager.IsHost = ModManager.GameState.Role == ROLE_AUTHORITY
+        ModManager.Trigger(ModManager, "AppStateChanged", ModManager.AppState)
     end
 
     ModManager.AddCommand(ModManager, "reload", ReloadCommand)
@@ -437,22 +459,41 @@ local function InitData()
     ModManager.AddCommand(ModManager, "debug", DebugCommand)
 end
 
-local function Init()
-    LoadMods()
-
-    InitData()
-
-    ModManager.Trigger(ModManager, "Init")
-
-    -- hooks enabling loop
-    ModManager.Loop(ModManager, 1000, function()
-        ToggleHooks()
+local function CheckUE4SSVersion()
+    local Major, Minor, Patch = UE4SS.GetVersion()
+    if Major < 3 or (Major == 3 and Minor == 0 and Patch < 1) then
+        Log(ModManager, LOG.ERR, "UE4SS version too old", true)
         return false
-    end)
+    end
 
-    Log(ModManager, LOG.INFO, "ModManager Loaded!")
+    -- detect if there is a folder named "ue4ss" in Win64
+    local CheckPath = AbsPath:gsub("\\Win64\\.*$", "\\Win64\\ue4ss\\")
+    if not file.exists(CheckPath) or not file.isDir(CheckPath) then
+        Log(ModManager, LOG.ERR, "UE4SS folder not found", true)
+        return false
+    end
 
-    --local LogicMods = IterateGameDirectories().Game.Content.Paks.LogicMods;
+    return true
+end
+
+local function Init()
+    if CheckUE4SSVersion() then
+        LoadMods()
+
+        InitData()
+
+        ModManager.Trigger(ModManager, "Init")
+
+        -- hooks toggling loop
+        ModManager.Loop(ModManager, 1000, function()
+            ToggleHooks()
+            return false
+        end)
+
+        Log(ModManager, LOG.INFO, "ModManager Loaded!")
+
+        --local LogicMods = IterateGameDirectories().Game.Content.Paks.LogicMods;
+    end
 end
 
 Init()

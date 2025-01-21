@@ -1,5 +1,6 @@
----@class ExampleMod : ModModule
+---@class ExampleMod: ModModule
 local M = {
+    Author = "TontonSanael",
     Version = 1,
 }
 
@@ -15,7 +16,7 @@ end
 ---@param bAuthority RemoteUnrealParam
 ---@param Interacted RemoteUnrealParam
 ---@param InputAction RemoteUnrealParam
-local function onOrderMonitorInteraction(ModManager, OrderMonitor, Interactor, bAuthority, Interacted, InputAction)
+local function onOrderMonitorInteraction(ModManager, OrderMonitor, bAuthority, Interactor, Interacted, InputAction)
     local params = {
         bAuthority = bAuthority:get(),
         Interactor = Interactor:get():GetFName():ToString(),
@@ -92,7 +93,6 @@ function M.Init(ModManager)
 
     M.DingSound = ModManager.AddSound(M, "ding.wav")
     ModManager.AddKey(M, Key.F6, "My example key 2 with sound", OnPressCustomKey2)
-
 end
 
 function M.Unload(ModManager)

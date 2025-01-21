@@ -478,9 +478,9 @@ end
 
 local function Init()
     if CheckUE4SSVersion() then
-        LoadMods()
-
         InitData()
+        
+        LoadMods()
 
         ModManager.Trigger(ModManager, "Init")
 

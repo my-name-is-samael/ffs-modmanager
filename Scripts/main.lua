@@ -8,8 +8,7 @@ require("types")
 local AbsPath = debug.getinfo(1, "S").source
     :match("@(.*[/\\])")
     :gsub("scripts\\$", "")
-local RelPath = AbsPath:gsub("^.*(\\Win64\\Mods\\)", "Mods\\")
-    :gsub("^.*(\\Win64\\ue4ss\\Mods\\)", "ue4ss\\Mods\\")
+local RelPath = AbsPath:gsub("^.*(ProjectBakery\\Binaries\\Win64\\ue4ss\\Mods\\)", "ue4ss\\Mods\\")
 
 -- ENetRole.ROLE_Authority
 local ROLE_AUTHORITY = 3
@@ -467,7 +466,7 @@ local function CheckUE4SSVersion()
     end
 
     -- detect if there is a folder named "ue4ss" in Win64
-    local CheckPath = AbsPath:gsub("\\Win64\\.*$", "\\Win64\\ue4ss\\")
+    local CheckPath = AbsPath:gsub("\\ProjectBakery\\Binaries\\Win64\\.*$", "\\ProjectBakery\\Binaries\\Win64\\ue4ss\\")
     if not file.exists(CheckPath) or not file.isDir(CheckPath) then
         Log(ModManager, LOG.ERR, "UE4SS folder not found", true)
         return false
@@ -479,7 +478,7 @@ end
 local function Init()
     if CheckUE4SSVersion() then
         InitData()
-        
+
         LoadMods()
 
         ModManager.Trigger(ModManager, "Init")

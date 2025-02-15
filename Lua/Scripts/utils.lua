@@ -305,6 +305,20 @@ table.includes = table.includes or function(tab, el)
 end
 table.contains = table.includes
 
+---@param tab1 any[]
+---@param tab2 any[]
+---@return boolean
+table.compare = table.compare or function(tab1, tab2)
+    if type(tab1) ~= "table" or type(tab2) ~= "table" then return tab1 == tab2 end
+    if #tab1 ~= #tab2 then return false end
+    for i = 1, #tab1 do
+        if tab1[i] ~= tab2[i] then
+            return false
+        end
+    end
+    return true
+end
+
 -- MATH UTILS
 
 ---@param value number
@@ -335,4 +349,12 @@ math.clamp = math.clamp or function(value, min, max)
         value = max
     end
     return value
+end
+
+math.round = math.round or function(value, precision)
+    precision = precision or 0
+    if precision < 0 then
+        return value
+    end
+    return tonumber(string.format("%." .. tostring(precision) .. "f", value))
 end

@@ -18,7 +18,7 @@ local ModManager = {
     ID = "ModManager",
     Version = 1,
 
-    DEBUG = true,
+    DEBUG = false,
     AppState = APP_STATES.MAIN_MENU,
     GameState = nil,
     IsHost = false,
@@ -490,9 +490,23 @@ local function Init()
         end)
 
         Log(ModManager, LOG.INFO, "ModManager Loaded!")
-
-        --local LogicMods = IterateGameDirectories().Game.Content.Paks.LogicMods;
     end
 end
 
 Init()
+
+--local LogicMods = IterateGameDirectories().Game.Content.Paks.LogicMods;
+
+ExecuteInGameThread(function()
+    local modInfo = {
+        ["PackageName"] = FName("/Game/Mods/Exemple/ModActor"),
+        ["AssetName"] = FName("ModActor_C"),
+    }
+    AssetRegistryHelpers = StaticFindObject("/Script/AssetRegistry.Default__AssetRegistryHelpers")
+    local ModClass = AssetRegistryHelpers:GetAsset(modInfo)
+    if ModClass:IsValid() then
+        Log(ModManager, LOG.INFO, "VALID")
+    else
+        Log(ModManager, LOG.INFO, "INVALID")
+    end
+end)

@@ -1,6 +1,6 @@
 ---
-name: Add a mod to the featured mods list
-about: Ticket to add a feature mod
+name: Add your mod to the featured mods list
+about: Ask us to add your mod using the ModManager
 title: ''
 labels: Mod featuring
 assignees: ''

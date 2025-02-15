@@ -24,4 +24,4 @@ From here, you can check active mods, update their own settings and reload them.
 
 ## Libs included:
 - [UE4SS 3.0.1 Beta (30/12/2024)](https://github.com/UE4SS-RE/RE-UE4SS/releases/tag/experimental-latest)
-- [bitfix 80af6c2](https://github.com/trumank/bitfix/releases/tag/latest)
+- [bitfix 80af6c2 (11/12/2024)](https://github.com/trumank/bitfix/releases/tag/latest)
